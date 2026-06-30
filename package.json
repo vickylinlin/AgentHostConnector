@@ -1,0 +1,46 @@
+{
+  "name": "agent-host-connector",
+  "version": "0.1.0",
+  "description": "Local HTTP MCP host connector for NavPilot and other agents.",
+  "type": "module",
+  "bin": {
+    "agent-host-connector": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "NOTICE.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"import('node:fs').then(fs=>fs.chmodSync('dist/index.js', 0o755))\"",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "navpilot",
+    "agent",
+    "filesystem",
+    "skills"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "^2.0.6",
+    "@modelcontextprotocol/hono": "^2.0.0-alpha.3",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/server": "^2.0.0-alpha.3",
+    "diff": "^8.0.3",
+    "hono": "^4.12.14",
+    "minimatch": "^10.0.1",
+    "yaml": "^2.8.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  }
+}

@@ -1,0 +1,20 @@
+import { type Logger } from './logger.js';
+import { type McpHost } from './mcp.js';
+import type { AppConfig, LoadedConfig, RuntimeStatus, ToolSummary } from './types.js';
+import { type SkillCatalog } from './skills.js';
+export type Runtime = {
+    readonly listenHost: string;
+    readonly listenPort: number;
+    readonly startedAt: Date;
+    logger: Logger;
+    config(): LoadedConfig;
+    allowedDirectories(): string[];
+    warnings(): string[];
+    mcpHost(): McpHost;
+    tools(): ToolSummary[];
+    status(): RuntimeStatus;
+    skills(): Promise<SkillCatalog>;
+    updateConfig(input: AppConfig): Promise<LoadedConfig>;
+};
+export declare function createRuntime(initialConfig: LoadedConfig): Promise<Runtime>;
+export declare function createRuntimeFromProcess(args: string[], env?: NodeJS.ProcessEnv): Promise<Runtime>;
