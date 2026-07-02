@@ -14,6 +14,35 @@ function write(level, message, data) {
     else
         console.log(line);
 }
+export function formatConfigDetails(details) {
+    const rows = [
+        ['Web Admin', details.webUrl],
+        ['MCP Endpoint', details.mcpUrl],
+        ['Config Path', details.configPath],
+        ['Host', details.host],
+        ['Port', String(details.port)],
+        ['Skills Directory', details.skillsDir],
+        ['Allowed Directories', details.allowedDirectories[0] ?? 'none'],
+        ['Log Level', details.logLevel],
+    ];
+    if (details.restartRequired !== undefined) {
+        rows.push(['Restart Required', details.restartRequired ? 'yes' : 'no']);
+    }
+    const labelWidth = Math.max(...rows.map(([label]) => label.length));
+    const lines = [details.title, '-'.repeat(details.title.length)];
+    for (const [label, value] of rows) {
+        lines.push(`${label.padEnd(labelWidth)}  ${value}`);
+        if (label === 'Allowed Directories') {
+            for (const directory of details.allowedDirectories.slice(1)) {
+                lines.push(`${''.padEnd(labelWidth)}  ${directory}`);
+            }
+        }
+    }
+    return lines.join('\n');
+}
+export function writeConfigDetails(details) {
+    console.log(formatConfigDetails(details));
+}
 export function createLogger(initialLevel) {
     let current = initialLevel;
     const enabled = (level) => order[level] >= order[current];

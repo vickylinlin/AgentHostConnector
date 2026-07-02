@@ -4,7 +4,7 @@ import path from 'node:path'
 import { serve } from '@hono/node-server'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../src/config.js'
 import { createRuntime, type Runtime } from '../src/runtime.js'
 import { createApp } from '../src/server.js'
@@ -51,6 +51,7 @@ async function startRuntime(configPath: string, skillsDir: string, allowedDirect
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await Promise.all(running.splice(0).map((item) => item.close()))
 })
 
@@ -91,6 +92,7 @@ describe('server', () => {
     let tools = await (await fetch(`${server.baseUrl}/api/tools`)).json()
     expect(tools.tools.some((tool: { name: string }) => tool.name === 'read_text_file')).toBe(false)
 
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const response = await fetch(`${server.baseUrl}/api/config`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -103,6 +105,13 @@ describe('server', () => {
       }),
     })
     expect(response.ok).toBe(true)
+    const output = log.mock.calls.map(([message]) => String(message)).join('\n')
+    expect(output).toContain('Config saved')
+    expect(output).toContain('Config Path')
+    expect(output).toContain('Skills Directory')
+    expect(output).toContain('Allowed Directories')
+    expect(output).toContain(allowed)
+    expect(output).toContain('Restart Required     yes')
 
     tools = await (await fetch(`${server.baseUrl}/api/tools`)).json()
     expect(tools.tools.some((tool: { name: string }) => tool.name === 'read_text_file')).toBe(true)
@@ -166,6 +175,7 @@ describe('server', () => {
     await fs.writeFile(path.join(newSkillsDir, 'new-skill', 'SKILL.md'), '---\nname: new-skill\ndescription: New\n---\nNew')
 
     const server = await startRuntime(path.join(root, 'config.yaml'), oldSkillsDir)
+    vi.spyOn(console, 'log').mockImplementation(() => {})
     const response = await fetch(`${server.baseUrl}/api/config`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },

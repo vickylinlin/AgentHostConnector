@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { serve } from '@hono/node-server';
 import { helpText } from './config.js';
+import { writeConfigDetails } from './logger.js';
 import { createRuntimeFromProcess } from './runtime.js';
 import { createApp } from './server.js';
 async function main() {
@@ -15,10 +16,17 @@ async function main() {
         hostname: runtime.listenHost,
         port: runtime.listenPort,
     }, (info) => {
-        runtime.logger.info('Server listening', {
-            mcpUrl: `http://${info.address}:${info.port}/mcp`,
+        const config = runtime.config();
+        writeConfigDetails({
+            title: 'AgentHostConnector started',
             webUrl: `http://${info.address}:${info.port}/`,
-            configPath: runtime.config().configPath,
+            mcpUrl: `http://${info.address}:${info.port}/mcp`,
+            configPath: config.configPath,
+            host: config.host,
+            port: config.port,
+            skillsDir: config.skillsDir,
+            allowedDirectories: runtime.allowedDirectories(),
+            logLevel: config.logLevel,
         });
     });
 }

@@ -1,5 +1,5 @@
 import { loadConfig, saveConfig } from './config.js';
-import { createLogger } from './logger.js';
+import { createLogger, writeConfigDetails } from './logger.js';
 import { createMcpHost } from './mcp.js';
 import { resolveAllowedDirectories } from './fs/security.js';
 import { loadSkillCatalog } from './skills.js';
@@ -31,6 +31,29 @@ export async function createRuntime(initialConfig) {
             logger.warn(warning);
         mcpHost = await createMcpHost(currentConfig, allowedDirectories, logger);
     }
+    function status() {
+        const configuredHost = currentConfig.host;
+        const configuredPort = currentConfig.port;
+        const webUrl = `http://${listenHost}:${listenPort}/`;
+        return {
+            name: 'agent-host-connector',
+            version: '0.1.0',
+            configPath: currentConfig.configPath,
+            mcpUrl: `http://${listenHost}:${listenPort}/mcp`,
+            webUrl,
+            host: listenHost,
+            port: listenPort,
+            configuredHost,
+            configuredPort,
+            restartRequired: configuredHost !== listenHost || configuredPort !== listenPort,
+            uptimeSeconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
+            nodeVersion: process.version,
+            skillsDir: currentConfig.skillsDir,
+            allowedDirectories: [...allowedDirectories],
+            filesystemToolsRegistered: allowedDirectories.length > 0,
+            startedAt: startedAt.toISOString(),
+        };
+    }
     await rebuildMcp();
     const runtime = {
         listenHost,
@@ -42,35 +65,26 @@ export async function createRuntime(initialConfig) {
         warnings: () => [...warnings],
         mcpHost: () => mcpHost,
         tools: () => mcpHost.tools,
-        status: () => {
-            const configuredHost = currentConfig.host;
-            const configuredPort = currentConfig.port;
-            const webUrl = `http://${listenHost}:${listenPort}/`;
-            return {
-                name: 'agent-host-connector',
-                version: '0.1.0',
-                configPath: currentConfig.configPath,
-                mcpUrl: `http://${listenHost}:${listenPort}/mcp`,
-                webUrl,
-                host: listenHost,
-                port: listenPort,
-                configuredHost,
-                configuredPort,
-                restartRequired: configuredHost !== listenHost || configuredPort !== listenPort,
-                uptimeSeconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
-                nodeVersion: process.version,
-                skillsDir: currentConfig.skillsDir,
-                allowedDirectories: [...allowedDirectories],
-                filesystemToolsRegistered: allowedDirectories.length > 0,
-                startedAt: startedAt.toISOString(),
-            };
-        },
+        status,
         skills: () => loadSkillCatalog(currentConfig.skillsDir, logger),
         updateConfig: async (input) => {
             await saveConfig(currentConfig.configPath, input);
             currentConfig = normalizeInput(input, currentConfig.configPath);
             logger.setLevel(currentConfig.logLevel);
             await rebuildMcp();
+            const currentStatus = status();
+            writeConfigDetails({
+                title: 'Config saved',
+                webUrl: currentStatus.webUrl,
+                mcpUrl: currentStatus.mcpUrl,
+                configPath: currentConfig.configPath,
+                host: currentConfig.host,
+                port: currentConfig.port,
+                skillsDir: currentConfig.skillsDir,
+                allowedDirectories,
+                logLevel: currentConfig.logLevel,
+                restartRequired: currentStatus.restartRequired,
+            });
             return currentConfig;
         },
     };
