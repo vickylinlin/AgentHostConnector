@@ -5,6 +5,7 @@ import { serve } from '@hono/node-server'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { WebSocket, WebSocketServer } from 'ws'
 import { loadConfig } from '../src/config.js'
 import { createRuntime, type Runtime } from '../src/runtime.js'
 import { createApp } from '../src/server.js'
@@ -35,8 +36,9 @@ async function startRuntime(configPath: string, skillsDirs: string[], allowedDir
   )
   const runtime = await createRuntime(config)
   const app = createApp(runtime)
+  const wss = new WebSocketServer({ noServer: true })
   const server = await new Promise<ReturnType<typeof serve>>((resolve) => {
-    const created = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 }, () => resolve(created))
+    const created = serve({ fetch: app.fetch, websocket: { server: wss }, hostname: '127.0.0.1', port: 0 }, () => resolve(created))
   })
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('No server address')
@@ -70,8 +72,17 @@ describe('server', () => {
 
     const status = await (await fetch(`${server.baseUrl}/api/status`)).json()
     expect(status.mcpUrl).toContain('/mcp')
+    expect(status.browserMcpUrl).toContain('/browser/mcp')
+    expect(status.browserConnected).toBe(false)
+    expect(status.browserToolCount).toBe(0)
     expect(status.filesystemToolsRegistered).toBe(false)
     expect(status.skillsDirs).toEqual([skillsDir])
+
+    const browserStatus = await (await fetch(`${server.baseUrl}/api/browser/status`)).json()
+    expect(browserStatus.browserMcpUrl).toContain('/browser/mcp')
+    expect(browserStatus.browserBridgeUrl).toContain('/api/browser/bridge')
+    expect(browserStatus.browserConnected).toBe(false)
+    expect(browserStatus.tools).toEqual([])
 
     const skills = await (await fetch(`${server.baseUrl}/api/skills`)).json()
     expect(skills.skills).toHaveLength(1)
@@ -164,6 +175,74 @@ describe('server', () => {
       expect(tools.tools.map((tool) => tool.name)).toContain('read_text_file')
     } finally {
       await client.close()
+    }
+  })
+
+  it('serves browser MCP tools registered by a NavPilot bridge client', async () => {
+    const root = await tempDir('ahc-browser-')
+    const skillsDir = path.join(root, 'skills')
+    await fs.mkdir(skillsDir, { recursive: true })
+
+    const server = await startRuntime(path.join(root, 'config.yaml'), [skillsDir])
+    const emptyClient = new Client({ name: 'browser-empty-test', version: '1.0.0' })
+    const emptyTransport = new StreamableHTTPClientTransport(new URL(`${server.baseUrl}/browser/mcp`))
+    await emptyClient.connect(emptyTransport)
+    try {
+      expect((await emptyClient.listTools()).tools).toEqual([])
+    } finally {
+      await emptyClient.close()
+    }
+
+    const socket = new WebSocket(`${server.baseUrl.replace('http:', 'ws:')}/api/browser/bridge`)
+    await new Promise<void>((resolve, reject) => {
+      socket.once('open', resolve)
+      socket.once('error', reject)
+    })
+    socket.on('message', (raw) => {
+      const message = JSON.parse(String(raw)) as { type: string; id: string; toolName: string; args?: Record<string, unknown> }
+      if (message.type !== 'call') return
+      socket.send(JSON.stringify({
+        type: 'call_result',
+        id: message.id,
+        ok: true,
+        result: { toolName: message.toolName, args: message.args, value: 'ok' },
+      }))
+    })
+    socket.send(JSON.stringify({
+      type: 'register',
+      clientName: 'NavPilot Test',
+      extensionId: 'test-extension',
+      tools: [{
+        name: 'tab_list',
+        title: 'List Tabs',
+        description: 'Lists browser tabs.',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+        outputSchema: { type: 'object', properties: { value: { type: 'string' } } },
+        annotations: { readOnlyHint: true },
+      }],
+    }))
+
+    await vi.waitFor(async () => {
+      const status = await (await fetch(`${server.baseUrl}/api/browser/status`)).json()
+      expect(status.browserConnected).toBe(true)
+      expect(status.browserToolCount).toBe(1)
+    })
+
+    const client = new Client({ name: 'browser-test', version: '1.0.0' })
+    const transport = new StreamableHTTPClientTransport(new URL(`${server.baseUrl}/browser/mcp`))
+    await client.connect(transport)
+    try {
+      const tools = await client.listTools()
+      expect(tools.tools.map((tool) => tool.name)).toEqual(['tab_list'])
+      const result = await client.callTool({ name: 'tab_list', arguments: { includeInactive: true } })
+      expect(result.structuredContent).toEqual({
+        toolName: 'tab_list',
+        args: { includeInactive: true },
+        value: 'ok',
+      })
+    } finally {
+      await client.close()
+      socket.close()
     }
   })
 

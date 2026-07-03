@@ -1,8 +1,9 @@
 import { loadConfig, saveConfig } from './config.js'
 import { createLogger, writeConfigDetails, type Logger } from './logger.js'
 import { createMcpHost, type McpHost } from './mcp.js'
+import { BrowserBridge, createBrowserMcpHost, type BrowserMcpHost } from './browser-bridge.js'
 import { resolveAllowedDirectories } from './fs/security.js'
-import type { AppConfig, LoadedConfig, RuntimeStatus, ToolSummary } from './types.js'
+import type { AppConfig, BrowserBridgeStatus, LoadedConfig, RuntimeStatus, ToolSummary } from './types.js'
 import { loadSkillCatalog, type SkillCatalog } from './skills.js'
 import { resolvePath } from './path-utils.js'
 
@@ -15,7 +16,9 @@ export type Runtime = {
   allowedDirectories(): string[]
   warnings(): string[]
   mcpHost(): McpHost
+  browserMcpHost(): BrowserMcpHost
   tools(): ToolSummary[]
+  browserStatus(): BrowserBridgeStatus
   status(): RuntimeStatus
   skills(): Promise<SkillCatalog>
   updateConfig(input: AppConfig): Promise<LoadedConfig>
@@ -37,10 +40,12 @@ export async function createRuntime(initialConfig: LoadedConfig): Promise<Runtim
   let allowedDirectories: string[] = []
   let warnings: string[] = []
   let mcpHost: McpHost
+  let browserMcpHost: BrowserMcpHost
   const listenHost = initialConfig.host
   const listenPort = initialConfig.port
   const startedAt = new Date()
   const logger = createLogger(initialConfig.logLevel)
+  const browserBridge = new BrowserBridge(logger)
 
   async function rebuildMcp() {
     const resolved = await resolveAllowedDirectories(currentConfig.allowedDirectories)
@@ -50,9 +55,14 @@ export async function createRuntime(initialConfig: LoadedConfig): Promise<Runtim
     mcpHost = await createMcpHost(currentConfig, allowedDirectories, logger)
   }
 
+  function browserStatus(): BrowserBridgeStatus {
+    return browserBridge.status(listenHost, listenPort)
+  }
+
   function status(): RuntimeStatus {
     const configuredHost = currentConfig.host
     const configuredPort = currentConfig.port
+    const currentBrowserStatus = browserStatus()
     const webUrl = `http://${listenHost}:${listenPort}/`
     return {
       name: 'agent-host-connector',
@@ -71,10 +81,15 @@ export async function createRuntime(initialConfig: LoadedConfig): Promise<Runtim
       allowedDirectories: [...allowedDirectories],
       filesystemToolsRegistered: allowedDirectories.length > 0,
       startedAt: startedAt.toISOString(),
+      browserMcpUrl: currentBrowserStatus.browserMcpUrl,
+      browserConnected: currentBrowserStatus.browserConnected,
+      browserToolCount: currentBrowserStatus.browserToolCount,
+      browserLastRegisteredAt: currentBrowserStatus.browserLastRegisteredAt,
     }
   }
 
   await rebuildMcp()
+  browserMcpHost = await createBrowserMcpHost(browserBridge)
 
   const runtime: Runtime = {
     listenHost,
@@ -85,7 +100,9 @@ export async function createRuntime(initialConfig: LoadedConfig): Promise<Runtim
     allowedDirectories: () => [...allowedDirectories],
     warnings: () => [...warnings],
     mcpHost: () => mcpHost,
+    browserMcpHost: () => browserMcpHost,
     tools: () => mcpHost.tools,
+    browserStatus,
     status,
     skills: () => loadSkillCatalog(currentConfig.skillsDirs, logger),
     updateConfig: async (input) => {

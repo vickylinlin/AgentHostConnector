@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { serve } from '@hono/node-server';
+import { WebSocketServer } from 'ws';
 import { helpText } from './config.js';
 import { writeConfigDetails } from './logger.js';
 import { createRuntimeFromProcess } from './runtime.js';
@@ -11,8 +12,10 @@ async function main() {
     }
     const runtime = await createRuntimeFromProcess(process.argv.slice(2));
     const app = createApp(runtime);
+    const wss = new WebSocketServer({ noServer: true });
     serve({
         fetch: app.fetch,
+        websocket: { server: wss },
         hostname: runtime.listenHost,
         port: runtime.listenPort,
     }, (info) => {

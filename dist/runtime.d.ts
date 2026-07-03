@@ -1,6 +1,7 @@
 import { type Logger } from './logger.js';
 import { type McpHost } from './mcp.js';
-import type { AppConfig, LoadedConfig, RuntimeStatus, ToolSummary } from './types.js';
+import { type BrowserMcpHost } from './browser-bridge.js';
+import type { AppConfig, BrowserBridgeStatus, LoadedConfig, RuntimeStatus, ToolSummary } from './types.js';
 import { type SkillCatalog } from './skills.js';
 export type Runtime = {
     readonly listenHost: string;
@@ -11,7 +12,9 @@ export type Runtime = {
     allowedDirectories(): string[];
     warnings(): string[];
     mcpHost(): McpHost;
+    browserMcpHost(): BrowserMcpHost;
     tools(): ToolSummary[];
+    browserStatus(): BrowserBridgeStatus;
     status(): RuntimeStatus;
     skills(): Promise<SkillCatalog>;
     updateConfig(input: AppConfig): Promise<LoadedConfig>;

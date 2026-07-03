@@ -12,6 +12,18 @@ export type LoadedConfig = AppConfig & {
   configPath: string
 }
 
+export type BrowserBridgeStatus = {
+  browserMcpUrl: string
+  browserBridgeUrl: string
+  browserConnected: boolean
+  browserToolCount: number
+  browserConnectedAt: string | null
+  browserLastRegisteredAt: string | null
+  browserClientName: string | null
+  browserExtensionId: string | null
+  tools: ToolSummary[]
+}
+
 export type RuntimeStatus = {
   name: string
   version: string
@@ -29,12 +41,16 @@ export type RuntimeStatus = {
   allowedDirectories: string[]
   filesystemToolsRegistered: boolean
   startedAt: string
+  browserMcpUrl: string
+  browserConnected: boolean
+  browserToolCount: number
+  browserLastRegisteredAt: string | null
 }
 
 export type ToolSummary = {
   name: string
   title: string
   description: string
-  source: 'skills' | 'filesystem'
+  source: 'skills' | 'filesystem' | 'browser'
   readOnly: boolean
 }

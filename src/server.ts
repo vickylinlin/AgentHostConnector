@@ -1,7 +1,13 @@
 import { z } from 'zod'
+import { upgradeWebSocket } from '@hono/node-server'
 import type { Runtime } from './runtime.js'
 import { createBaseApp } from './mcp.js'
 import { renderAdminPage } from './web/page.js'
+
+type BridgeSocket = {
+  send(data: string): void
+  close(): void
+}
 
 const configInputSchema = z.object({
   host: z.string().min(1),
@@ -20,6 +26,28 @@ export function createApp(runtime: Runtime) {
   app.get('/api/config', (c) => c.json(runtime.config()))
   app.get('/api/skills', async (c) => c.json(await runtime.skills()))
   app.get('/api/tools', (c) => c.json({ tools: runtime.tools() }))
+  app.get('/api/browser/status', (c) => c.json(runtime.browserStatus()))
+  app.get(
+    '/api/browser/bridge',
+    upgradeWebSocket(() => {
+      let currentSocket: BridgeSocket | undefined
+      return {
+        onOpen(_event, ws) {
+          currentSocket = ws
+          runtime.browserMcpHost().bridge.attachSocket(ws)
+        },
+        onMessage(event) {
+          void runtime.browserMcpHost().bridge.handleMessage(event.data)
+        },
+        onClose() {
+          runtime.browserMcpHost().bridge.detachSocket(currentSocket)
+        },
+        onError(_event, ws) {
+          runtime.browserMcpHost().bridge.detachSocket(ws)
+        },
+      }
+    }),
+  )
   app.put('/api/config', async (c) => {
     const input = configInputSchema.parse(await c.req.json())
     const config = await runtime.updateConfig(input)
@@ -27,6 +55,7 @@ export function createApp(runtime: Runtime) {
   })
 
   app.all('/mcp', (c) => runtime.mcpHost().transport.handleRequest(c.req.raw))
+  app.all('/browser/mcp', (c) => runtime.browserMcpHost().transport.handleRequest(c.req.raw))
 
   return app
 }
