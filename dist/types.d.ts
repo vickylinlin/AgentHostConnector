@@ -2,7 +2,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 export type AppConfig = {
     host: string;
     port: number;
-    skillsDir: string;
+    skillsDirs: string[];
     allowedDirectories: string[];
     logLevel: LogLevel;
 };
@@ -22,7 +22,7 @@ export type RuntimeStatus = {
     restartRequired: boolean;
     uptimeSeconds: number;
     nodeVersion: string;
-    skillsDir: string;
+    skillsDirs: string[];
     allowedDirectories: string[];
     filesystemToolsRegistered: boolean;
     startedAt: string;

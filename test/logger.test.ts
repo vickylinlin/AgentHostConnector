@@ -10,7 +10,7 @@ describe('logger', () => {
       configPath: '/tmp/config.yaml',
       host: '127.0.0.1',
       port: 18989,
-      skillsDir: '/tmp/skills',
+      skillsDirs: ['/tmp/skills'],
       allowedDirectories: [],
       logLevel: 'info',
     })
@@ -21,7 +21,7 @@ describe('logger', () => {
     expect(output).toContain('Config Path          /tmp/config.yaml')
     expect(output).toContain('Host                 127.0.0.1')
     expect(output).toContain('Port                 18989')
-    expect(output).toContain('Skills Directory     /tmp/skills')
+    expect(output).toContain('Skills Directories   /tmp/skills')
     expect(output).toContain('Allowed Directories  none')
     expect(output).toContain('Log Level            info')
   })
@@ -34,15 +34,18 @@ describe('logger', () => {
       configPath: '/tmp/config.yaml',
       host: '127.0.0.1',
       port: 19000,
-      skillsDir: '/tmp/skills',
+      skillsDirs: ['/tmp/skills-a', '/tmp/skills-b'],
       allowedDirectories: ['/tmp/one', '/tmp/two'],
       logLevel: 'debug',
       restartRequired: true,
     })
     const lines = output.split('\n')
+    const skillsLine = lines.findIndex((line) => line.includes('Skills Directories'))
     const allowedLine = lines.findIndex((line) => line.includes('Allowed Directories'))
 
     expect(output).toContain('Config saved')
+    expect(lines[skillsLine]).toContain('/tmp/skills-a')
+    expect(lines[skillsLine + 1].trim()).toBe('/tmp/skills-b')
     expect(lines[allowedLine]).toContain('/tmp/one')
     expect(lines[allowedLine + 1].trim()).toBe('/tmp/two')
     expect(output).toContain('Restart Required     yes')

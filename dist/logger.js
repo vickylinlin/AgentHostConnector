@@ -21,7 +21,7 @@ export function formatConfigDetails(details) {
         ['Config Path', details.configPath],
         ['Host', details.host],
         ['Port', String(details.port)],
-        ['Skills Directory', details.skillsDir],
+        ['Skills Directories', details.skillsDirs[0] ?? 'none'],
         ['Allowed Directories', details.allowedDirectories[0] ?? 'none'],
         ['Log Level', details.logLevel],
     ];
@@ -32,7 +32,12 @@ export function formatConfigDetails(details) {
     const lines = [details.title, '-'.repeat(details.title.length)];
     for (const [label, value] of rows) {
         lines.push(`${label.padEnd(labelWidth)}  ${value}`);
-        if (label === 'Allowed Directories') {
+        if (label === 'Skills Directories') {
+            for (const directory of details.skillsDirs.slice(1)) {
+                lines.push(`${''.padEnd(labelWidth)}  ${directory}`);
+            }
+        }
+        else if (label === 'Allowed Directories') {
             for (const directory of details.allowedDirectories.slice(1)) {
                 lines.push(`${''.padEnd(labelWidth)}  ${directory}`);
             }

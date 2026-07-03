@@ -8,7 +8,7 @@ function normalizeInput(input, configPath) {
     return {
         host: input.host.trim() || '127.0.0.1',
         port: input.port,
-        skillsDir: resolvePath(input.skillsDir),
+        skillsDirs: input.skillsDirs.map(resolvePath),
         allowedDirectories: input.allowedDirectories.map(resolvePath),
         logLevel: input.logLevel,
         configPath,
@@ -48,7 +48,7 @@ export async function createRuntime(initialConfig) {
             restartRequired: configuredHost !== listenHost || configuredPort !== listenPort,
             uptimeSeconds: Math.round((Date.now() - startedAt.getTime()) / 1000),
             nodeVersion: process.version,
-            skillsDir: currentConfig.skillsDir,
+            skillsDirs: [...currentConfig.skillsDirs],
             allowedDirectories: [...allowedDirectories],
             filesystemToolsRegistered: allowedDirectories.length > 0,
             startedAt: startedAt.toISOString(),
@@ -66,7 +66,7 @@ export async function createRuntime(initialConfig) {
         mcpHost: () => mcpHost,
         tools: () => mcpHost.tools,
         status,
-        skills: () => loadSkillCatalog(currentConfig.skillsDir, logger),
+        skills: () => loadSkillCatalog(currentConfig.skillsDirs, logger),
         updateConfig: async (input) => {
             await saveConfig(currentConfig.configPath, input);
             currentConfig = normalizeInput(input, currentConfig.configPath);
@@ -80,7 +80,7 @@ export async function createRuntime(initialConfig) {
                 configPath: currentConfig.configPath,
                 host: currentConfig.host,
                 port: currentConfig.port,
-                skillsDir: currentConfig.skillsDir,
+                skillsDirs: currentConfig.skillsDirs,
                 allowedDirectories,
                 logLevel: currentConfig.logLevel,
                 restartRequired: currentStatus.restartRequired,

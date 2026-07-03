@@ -9,14 +9,14 @@ const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
 const fileConfigSchema = z.object({
     host: z.string().optional(),
     port: z.number().int().min(1).max(65535).optional(),
-    skillsDir: z.string().optional(),
+    skillsDirs: z.array(z.string().min(1)).optional(),
     allowedDirectories: z.array(z.string()).optional(),
     logLevel: logLevelSchema.optional(),
 });
 export const DEFAULT_CONFIG = {
     host: '127.0.0.1',
     port: 18989,
-    skillsDir: '~/.agents/skills',
+    skillsDirs: ['~/.agents/skills'],
     allowedDirectories: [],
     logLevel: 'info',
 };
@@ -54,7 +54,7 @@ export function parseCliArgs(args) {
         else if (arg === '--port')
             options.port = parsePort(next());
         else if (arg === '--skills-dir')
-            options.skillsDir = next();
+            options.skillsDirs = [...(options.skillsDirs ?? []), next()];
         else if (arg === '--allow-dir')
             options.allowedDirectories = [...(options.allowedDirectories ?? []), next()];
         else if (arg === '--log-level')
@@ -72,7 +72,7 @@ export function envOptions(env) {
         ...(env.CONFIG_PATH ? { configPath: env.CONFIG_PATH } : {}),
         ...(env.HOST ? { host: env.HOST } : {}),
         ...(env.PORT ? { port: parsePort(env.PORT) } : {}),
-        ...(env.SKILLS_DIR ? { skillsDir: env.SKILLS_DIR } : {}),
+        ...(env.SKILLS_DIRS ? { skillsDirs: env.SKILLS_DIRS.split(path.delimiter).filter(Boolean) } : {}),
         ...(allowed ? { allowedDirectories: allowed.split(path.delimiter).filter(Boolean) } : {}),
         ...(env.LOG_LEVEL ? { logLevel: parseLogLevel(env.LOG_LEVEL) } : {}),
     };
@@ -93,7 +93,7 @@ function normalizeConfig(config, configPath) {
     return {
         host: config.host.trim() || DEFAULT_CONFIG.host,
         port: config.port,
-        skillsDir: resolvePath(config.skillsDir),
+        skillsDirs: config.skillsDirs.map(resolvePath),
         allowedDirectories: config.allowedDirectories.map(resolvePath),
         logLevel: config.logLevel,
         configPath: resolvePath(configPath),
@@ -108,6 +108,7 @@ export async function loadConfig(cliOptions = {}, env = process.env) {
         ...fileConfig,
         ...envConfig,
         ...cliOptions,
+        skillsDirs: cliOptions.skillsDirs ?? envConfig.skillsDirs ?? fileConfig.skillsDirs ?? DEFAULT_CONFIG.skillsDirs,
         allowedDirectories: cliOptions.allowedDirectories ?? envConfig.allowedDirectories ?? fileConfig.allowedDirectories ?? DEFAULT_CONFIG.allowedDirectories,
     };
     return normalizeConfig(merged, configPath);
@@ -126,7 +127,7 @@ export function helpText() {
         '  --config <path>',
         '  --host <host>',
         '  --port <port>',
-        '  --skills-dir <path>',
+        '  --skills-dir <path>    Repeatable',
         '  --allow-dir <path>      Repeatable',
         '  --log-level <level>     debug | info | warn | error',
     ].join('\n');

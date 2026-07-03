@@ -21,13 +21,13 @@ async function tempDir(prefix: string) {
   return fs.mkdtemp(path.join(os.tmpdir(), prefix))
 }
 
-async function startRuntime(configPath: string, skillsDir: string, allowedDirectories: string[] = []): Promise<RunningServer> {
+async function startRuntime(configPath: string, skillsDirs: string[], allowedDirectories: string[] = []): Promise<RunningServer> {
   const config = await loadConfig(
     {
       configPath,
       host: '127.0.0.1',
       port: 1,
-      skillsDir,
+      skillsDirs,
       allowedDirectories,
       logLevel: 'error',
     },
@@ -62,7 +62,7 @@ describe('server', () => {
     await fs.mkdir(path.join(skillsDir, 'hello'), { recursive: true })
     await fs.writeFile(path.join(skillsDir, 'hello', 'SKILL.md'), '---\nname: hello\ndescription: Test skill\n---\nUse me.')
 
-    const server = await startRuntime(path.join(root, 'config.yaml'), skillsDir)
+    const server = await startRuntime(path.join(root, 'config.yaml'), [skillsDir])
     expect((await server.runtime.mcpHost().transport).sessionId).toBeUndefined()
 
     const health = await fetch(`${server.baseUrl}/healthz`)
@@ -71,6 +71,7 @@ describe('server', () => {
     const status = await (await fetch(`${server.baseUrl}/api/status`)).json()
     expect(status.mcpUrl).toContain('/mcp')
     expect(status.filesystemToolsRegistered).toBe(false)
+    expect(status.skillsDirs).toEqual([skillsDir])
 
     const skills = await (await fetch(`${server.baseUrl}/api/skills`)).json()
     expect(skills.skills).toHaveLength(1)
@@ -88,7 +89,7 @@ describe('server', () => {
     await fs.mkdir(skillsDir, { recursive: true })
     await fs.mkdir(allowed, { recursive: true })
 
-    const server = await startRuntime(path.join(root, 'config.yaml'), skillsDir)
+    const server = await startRuntime(path.join(root, 'config.yaml'), [skillsDir])
     let tools = await (await fetch(`${server.baseUrl}/api/tools`)).json()
     expect(tools.tools.some((tool: { name: string }) => tool.name === 'read_text_file')).toBe(false)
 
@@ -99,7 +100,7 @@ describe('server', () => {
       body: JSON.stringify({
         host: '127.0.0.1',
         port: 18990,
-        skillsDir,
+        skillsDirs: [skillsDir],
         allowedDirectories: [allowed],
         logLevel: 'error',
       }),
@@ -108,7 +109,7 @@ describe('server', () => {
     const output = log.mock.calls.map(([message]) => String(message)).join('\n')
     expect(output).toContain('Config saved')
     expect(output).toContain('Config Path')
-    expect(output).toContain('Skills Directory')
+    expect(output).toContain('Skills Directories')
     expect(output).toContain('Allowed Directories')
     expect(output).toContain(allowed)
     expect(output).toContain('Restart Required     yes')
@@ -118,6 +119,7 @@ describe('server', () => {
 
     const status = await (await fetch(`${server.baseUrl}/api/status`)).json()
     expect(status.restartRequired).toBe(true)
+    expect(status.skillsDirs).toEqual([skillsDir])
   })
 
   it('allows an MCP client to list resources and tools', async () => {
@@ -128,7 +130,7 @@ describe('server', () => {
     await fs.writeFile(path.join(skillsDir, 'hello', 'SKILL.md'), '---\nname: hello\ndescription: Test skill\n---\nUse me.')
     await fs.mkdir(allowed, { recursive: true })
 
-    const server = await startRuntime(path.join(root, 'config.yaml'), skillsDir, [allowed])
+    const server = await startRuntime(path.join(root, 'config.yaml'), [skillsDir], [allowed])
     const client = new Client({ name: 'agent-host-connector-test', version: '1.0.0' })
     const transport = new StreamableHTTPClientTransport(new URL(`${server.baseUrl}/mcp`))
     await client.connect(transport)
@@ -174,7 +176,7 @@ describe('server', () => {
     await fs.mkdir(path.join(newSkillsDir, 'new-skill'), { recursive: true })
     await fs.writeFile(path.join(newSkillsDir, 'new-skill', 'SKILL.md'), '---\nname: new-skill\ndescription: New\n---\nNew')
 
-    const server = await startRuntime(path.join(root, 'config.yaml'), oldSkillsDir)
+    const server = await startRuntime(path.join(root, 'config.yaml'), [oldSkillsDir])
     vi.spyOn(console, 'log').mockImplementation(() => {})
     const response = await fetch(`${server.baseUrl}/api/config`, {
       method: 'PUT',
@@ -182,7 +184,7 @@ describe('server', () => {
       body: JSON.stringify({
         host: '127.0.0.1',
         port: 1,
-        skillsDir: newSkillsDir,
+        skillsDirs: [newSkillsDir],
         allowedDirectories: [],
         logLevel: 'error',
       }),
@@ -195,6 +197,38 @@ describe('server', () => {
     try {
       const index = await client.readResource({ uri: 'skill://index.json' })
       expect(JSON.parse(index.contents[0].text ?? '{}').skills.map((skill: { name: string }) => skill.name)).toEqual(['new-skill'])
+    } finally {
+      await client.close()
+    }
+  })
+
+  it('serves only the overriding skill from multiple configured directories', async () => {
+    const root = await tempDir('ahc-mcp-multi-')
+    const firstSkillsDir = path.join(root, 'first-skills')
+    const secondSkillsDir = path.join(root, 'second-skills')
+    await fs.mkdir(path.join(firstSkillsDir, 'shared'), { recursive: true })
+    await fs.writeFile(path.join(firstSkillsDir, 'shared', 'SKILL.md'), '---\nname: shared\ndescription: First\n---\nFirst')
+    await fs.mkdir(path.join(secondSkillsDir, 'shared'), { recursive: true })
+    await fs.writeFile(path.join(secondSkillsDir, 'shared', 'SKILL.md'), '---\nname: shared\ndescription: Second\n---\nSecond')
+
+    const server = await startRuntime(path.join(root, 'config.yaml'), [firstSkillsDir, secondSkillsDir])
+    const client = new Client({ name: 'agent-host-connector-test', version: '1.0.0' })
+    const transport = new StreamableHTTPClientTransport(new URL(`${server.baseUrl}/mcp`))
+    await client.connect(transport)
+    try {
+      const resources = await client.listResources()
+      expect(resources.resources.filter((resource) => resource.uri === 'skill://shared/SKILL.md')).toHaveLength(1)
+      const index = await client.readResource({ uri: 'skill://index.json' })
+      expect(JSON.parse(index.contents[0].text ?? '{}').skills).toEqual([
+        {
+          name: 'shared',
+          type: 'skill-md',
+          description: 'Second',
+          url: 'skill://shared/SKILL.md',
+        },
+      ])
+      const skill = await client.readResource({ uri: 'skill://shared/SKILL.md' })
+      expect(skill.contents[0].text).toContain('Second')
     } finally {
       await client.close()
     }

@@ -30,7 +30,7 @@ async function main() {
         configPath: config.configPath,
         host: config.host,
         port: config.port,
-        skillsDir: config.skillsDir,
+        skillsDirs: config.skillsDirs,
         allowedDirectories: runtime.allowedDirectories(),
         logLevel: config.logLevel,
       })

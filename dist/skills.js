@@ -83,7 +83,7 @@ async function walkSkillDirectories(rootDir, diagnostics, logger) {
     const pending = [{ directoryPath: rootDir, depth: 0 }];
     let visited = 0;
     while (pending.length > 0) {
-        const current = pending.pop();
+        const current = pending.shift();
         if (!current)
             continue;
         if (current.depth > MAX_SCAN_DEPTH)
@@ -97,7 +97,7 @@ async function walkSkillDirectories(rootDir, diagnostics, logger) {
             break;
         }
         visited += 1;
-        const entries = await safeReadDir(current.directoryPath);
+        const entries = (await safeReadDir(current.directoryPath)).sort((a, b) => a.name.localeCompare(b.name));
         const hasSkillFile = entries.some((entry) => entry.isFile() && entry.name === SKILL_FILE_NAME);
         if (current.directoryPath !== rootDir)
             results.push(current.directoryPath);
@@ -126,6 +126,13 @@ async function collectSkillFiles(rootDir, diagnostics, logger) {
     const directories = await walkSkillDirectories(rootDir, diagnostics, logger);
     const matches = await Promise.all(directories.map((directoryPath) => findSkillFile(directoryPath)));
     return matches.filter((match) => match !== null);
+}
+async function collectSkillFilesFromRoots(rootDirs, diagnostics, logger) {
+    const matches = [];
+    for (const rootDir of rootDirs) {
+        matches.push(...(await collectSkillFiles(rootDir, diagnostics, logger)));
+    }
+    return matches;
 }
 function parseSkillFrontmatter(source) {
     const frontmatter = getFrontmatter(source);
@@ -158,15 +165,26 @@ function parseSkillSummary(match, raw) {
         metadata,
     };
 }
-export async function loadSkillCatalog(rootDir, logger) {
+export async function loadSkillCatalog(rootDirs, logger) {
     const diagnostics = [];
     const warn = createDiagnosticLogger(diagnostics, logger);
-    const matches = await collectSkillFiles(rootDir, diagnostics, logger);
-    const summaries = [];
+    const matches = await collectSkillFilesFromRoots(rootDirs, diagnostics, logger);
+    const summaries = new Map();
     for (const match of matches) {
         try {
             const raw = await fs.readFile(match.skillFilePath, 'utf8');
-            summaries.push(parseSkillSummary(match, raw));
+            const summary = parseSkillSummary(match, raw);
+            const previous = summaries.get(summary.name);
+            if (previous) {
+                warn({
+                    severity: 'warn',
+                    message: `Overriding duplicate skill name: ${summary.name}`,
+                    directoryPath: summary.directoryPath,
+                    skillFilePath: summary.skillFilePath,
+                    name: summary.name,
+                });
+            }
+            summaries.set(summary.name, summary);
         }
         catch (error) {
             warn({
@@ -177,28 +195,13 @@ export async function loadSkillCatalog(rootDir, logger) {
             });
         }
     }
-    const counts = new Map();
-    for (const summary of summaries)
-        counts.set(summary.name, (counts.get(summary.name) ?? 0) + 1);
-    const duplicateNames = new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name));
-    for (const summary of summaries) {
-        if (!duplicateNames.has(summary.name))
-            continue;
-        warn({
-            severity: 'error',
-            message: `Skipping duplicate skill name: ${summary.name}`,
-            directoryPath: summary.directoryPath,
-            skillFilePath: summary.skillFilePath,
-            name: summary.name,
-        });
-    }
     return {
-        skills: summaries.filter((summary) => !duplicateNames.has(summary.name)).sort((a, b) => a.name.localeCompare(b.name)),
+        skills: [...summaries.values()].sort((a, b) => a.name.localeCompare(b.name)),
         diagnostics,
     };
 }
-export async function listSkills(rootDir, logger) {
-    return (await loadSkillCatalog(rootDir, logger)).skills;
+export async function listSkills(rootDirs, logger) {
+    return (await loadSkillCatalog(rootDirs, logger)).skills;
 }
 export function createSkillUri(skillName, filePath) {
     return `skill://${skillName}/${filePath.split(path.sep).map(encodeURIComponent).join('/')}`;
@@ -239,8 +242,8 @@ function isPathInsideDirectory(candidate, directory) {
     const relative = path.relative(directory, candidate);
     return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
 }
-export async function readSkillResource(rootDir, skillName, filePath, logger) {
-    const catalog = await loadSkillCatalog(rootDir, logger);
+export async function readSkillResource(rootDirs, skillName, filePath, logger) {
+    const catalog = await loadSkillCatalog(rootDirs, logger);
     const skill = catalog.skills.find((item) => item.name === skillName);
     if (!skill)
         throw new Error(`Skill not found: ${skillName}`);

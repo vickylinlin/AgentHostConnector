@@ -22,7 +22,7 @@ function registerSkillCapabilities(server: McpServer, config: LoadedConfig, logg
       mimeType: 'application/json',
     },
     async (uri) => {
-      const catalog = await loadSkillCatalog(config.skillsDir, logger)
+      const catalog = await loadSkillCatalog(config.skillsDirs, logger)
       return {
         contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(createSkillIndex(catalog.skills)) }],
       }
@@ -33,7 +33,7 @@ function registerSkillCapabilities(server: McpServer, config: LoadedConfig, logg
     'skill_resource',
     new ResourceTemplate('skill://{skillName}/{+filePath}', {
       list: async () => {
-        const catalog = await loadSkillCatalog(config.skillsDir, logger)
+        const catalog = await loadSkillCatalog(config.skillsDirs, logger)
         return {
           resources: catalog.skills.map((skill) => ({
             uri: skill.uri,
@@ -55,7 +55,7 @@ function registerSkillCapabilities(server: McpServer, config: LoadedConfig, logg
     async (uri, variables) => {
       const skillName = String(variables.skillName ?? uri.hostname)
       const filePath = String(variables.filePath ?? decodeURIComponent(uri.pathname.replace(/^\//, '')))
-      const resource = await readSkillResource(config.skillsDir, skillName, filePath, logger)
+      const resource = await readSkillResource(config.skillsDirs, skillName, filePath, logger)
       if (resource.encoding === 'text') {
         return {
           contents: [{ uri: resource.uri, mimeType: resource.mimeType, text: resource.content }],

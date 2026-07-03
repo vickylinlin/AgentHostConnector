@@ -129,7 +129,7 @@ async function walkSkillDirectories(rootDir: string, diagnostics: SkillDiagnosti
   let visited = 0
 
   while (pending.length > 0) {
-    const current = pending.pop()
+    const current = pending.shift()
     if (!current) continue
     if (current.depth > MAX_SCAN_DEPTH) continue
     if (visited >= MAX_SCAN_DIRECTORIES) {
@@ -142,7 +142,7 @@ async function walkSkillDirectories(rootDir: string, diagnostics: SkillDiagnosti
     }
     visited += 1
 
-    const entries = await safeReadDir(current.directoryPath)
+    const entries = (await safeReadDir(current.directoryPath)).sort((a, b) => a.name.localeCompare(b.name))
     const hasSkillFile = entries.some((entry) => entry.isFile() && entry.name === SKILL_FILE_NAME)
     if (current.directoryPath !== rootDir) results.push(current.directoryPath)
     if (hasSkillFile) continue
@@ -172,6 +172,14 @@ async function collectSkillFiles(rootDir: string, diagnostics: SkillDiagnostic[]
   const directories = await walkSkillDirectories(rootDir, diagnostics, logger)
   const matches = await Promise.all(directories.map((directoryPath) => findSkillFile(directoryPath)))
   return matches.filter((match): match is SkillFileMatch => match !== null)
+}
+
+async function collectSkillFilesFromRoots(rootDirs: string[], diagnostics: SkillDiagnostic[], logger: Logger): Promise<SkillFileMatch[]> {
+  const matches: SkillFileMatch[] = []
+  for (const rootDir of rootDirs) {
+    matches.push(...(await collectSkillFiles(rootDir, diagnostics, logger)))
+  }
+  return matches
 }
 
 function parseSkillFrontmatter(source: string): ParsedFrontmatter {
@@ -204,16 +212,27 @@ function parseSkillSummary(match: SkillFileMatch, raw: string): SkillSummary {
   }
 }
 
-export async function loadSkillCatalog(rootDir: string, logger: Logger): Promise<SkillCatalog> {
+export async function loadSkillCatalog(rootDirs: string[], logger: Logger): Promise<SkillCatalog> {
   const diagnostics: SkillDiagnostic[] = []
   const warn = createDiagnosticLogger(diagnostics, logger)
-  const matches = await collectSkillFiles(rootDir, diagnostics, logger)
-  const summaries: SkillSummary[] = []
+  const matches = await collectSkillFilesFromRoots(rootDirs, diagnostics, logger)
+  const summaries = new Map<string, SkillSummary>()
 
   for (const match of matches) {
     try {
       const raw = await fs.readFile(match.skillFilePath, 'utf8')
-      summaries.push(parseSkillSummary(match, raw))
+      const summary = parseSkillSummary(match, raw)
+      const previous = summaries.get(summary.name)
+      if (previous) {
+        warn({
+          severity: 'warn',
+          message: `Overriding duplicate skill name: ${summary.name}`,
+          directoryPath: summary.directoryPath,
+          skillFilePath: summary.skillFilePath,
+          name: summary.name,
+        })
+      }
+      summaries.set(summary.name, summary)
     } catch (error) {
       warn({
         severity: 'error',
@@ -224,28 +243,14 @@ export async function loadSkillCatalog(rootDir: string, logger: Logger): Promise
     }
   }
 
-  const counts = new Map<string, number>()
-  for (const summary of summaries) counts.set(summary.name, (counts.get(summary.name) ?? 0) + 1)
-  const duplicateNames = new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name))
-  for (const summary of summaries) {
-    if (!duplicateNames.has(summary.name)) continue
-    warn({
-      severity: 'error',
-      message: `Skipping duplicate skill name: ${summary.name}`,
-      directoryPath: summary.directoryPath,
-      skillFilePath: summary.skillFilePath,
-      name: summary.name,
-    })
-  }
-
   return {
-    skills: summaries.filter((summary) => !duplicateNames.has(summary.name)).sort((a, b) => a.name.localeCompare(b.name)),
+    skills: [...summaries.values()].sort((a, b) => a.name.localeCompare(b.name)),
     diagnostics,
   }
 }
 
-export async function listSkills(rootDir: string, logger: Logger): Promise<SkillSummary[]> {
-  return (await loadSkillCatalog(rootDir, logger)).skills
+export async function listSkills(rootDirs: string[], logger: Logger): Promise<SkillSummary[]> {
+  return (await loadSkillCatalog(rootDirs, logger)).skills
 }
 
 export function createSkillUri(skillName: string, filePath: string): string {
@@ -289,8 +294,8 @@ function isPathInsideDirectory(candidate: string, directory: string): boolean {
   return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
 }
 
-export async function readSkillResource(rootDir: string, skillName: string, filePath: string, logger: Logger): Promise<SkillResource> {
-  const catalog = await loadSkillCatalog(rootDir, logger)
+export async function readSkillResource(rootDirs: string[], skillName: string, filePath: string, logger: Logger): Promise<SkillResource> {
+  const catalog = await loadSkillCatalog(rootDirs, logger)
   const skill = catalog.skills.find((item) => item.name === skillName)
   if (!skill) throw new Error(`Skill not found: ${skillName}`)
 

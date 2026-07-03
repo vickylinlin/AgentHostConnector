@@ -6,7 +6,7 @@ export type ConfigDetails = {
     configPath: string;
     host: string;
     port: number;
-    skillsDir: string;
+    skillsDirs: string[];
     allowedDirectories: string[];
     logLevel: LogLevel;
     restartRequired?: boolean;

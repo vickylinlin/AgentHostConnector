@@ -24,8 +24,8 @@ export type SkillResource = {
     content: string;
     encoding: 'text' | 'base64';
 };
-export declare function loadSkillCatalog(rootDir: string, logger: Logger): Promise<SkillCatalog>;
-export declare function listSkills(rootDir: string, logger: Logger): Promise<SkillSummary[]>;
+export declare function loadSkillCatalog(rootDirs: string[], logger: Logger): Promise<SkillCatalog>;
+export declare function listSkills(rootDirs: string[], logger: Logger): Promise<SkillSummary[]>;
 export declare function createSkillUri(skillName: string, filePath: string): string;
 export declare function createSkillIndex(skills: SkillSummary[]): {
     $schema: string;
@@ -37,4 +37,4 @@ export declare function createSkillIndex(skills: SkillSummary[]): {
     }[];
 };
 export declare function inferSkillMimeType(filePath: string): string;
-export declare function readSkillResource(rootDir: string, skillName: string, filePath: string, logger: Logger): Promise<SkillResource>;
+export declare function readSkillResource(rootDirs: string[], skillName: string, filePath: string, logger: Logger): Promise<SkillResource>;

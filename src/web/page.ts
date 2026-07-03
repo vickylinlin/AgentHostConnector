@@ -63,7 +63,7 @@ export function renderAdminPage(): string {
           <label>Port<input name="port" type="number" min="1" max="65535"></label>
           <label>Log level<select name="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option></select></label>
         </div>
-        <label style="margin-top:12px">Skills directory<input name="skillsDir"></label>
+        <label style="margin-top:12px">Skills directories (one path per line)<textarea name="skillsDirs" placeholder="/Users/alex/.agents/skills&#10;/Users/alex/Dev/project-skills"></textarea></label>
         <label style="margin-top:12px">Allowed directories (one path per line)<textarea name="allowedDirectories" placeholder="/Users/alex/Dev/project-a&#10;/Users/alex/Documents/workspace"></textarea></label>
         <div class="actions"><button type="submit">Save</button><span id="save-result"></span></div>
       </form>
@@ -100,7 +100,7 @@ export function renderAdminPage(): string {
       form.host.value = config.host;
       form.port.value = config.port;
       form.logLevel.value = config.logLevel;
-      form.skillsDir.value = config.skillsDir;
+      form.skillsDirs.value = config.skillsDirs.join('\\n');
       form.allowedDirectories.value = config.allowedDirectories.join('\\n');
       const skillRows = skills.skills.map(s => [s.name, s.description, s.uri, s.directoryPath]);
       const diagnosticRows = (skills.diagnostics ?? []).map(d => [d.severity, d.message, d.name ?? '', d.skillFilePath ?? d.directoryPath ?? '']);
@@ -125,7 +125,7 @@ export function renderAdminPage(): string {
           body: JSON.stringify({
             host: form.host.value,
             port: Number(form.port.value),
-            skillsDir: form.skillsDir.value,
+            skillsDirs: form.skillsDirs.value.split('\\n').map(s => s.trim()).filter(Boolean),
             allowedDirectories: form.allowedDirectories.value.split('\\n').map(s => s.trim()).filter(Boolean),
             logLevel: form.logLevel.value
           })

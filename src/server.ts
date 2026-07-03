@@ -6,7 +6,7 @@ import { renderAdminPage } from './web/page.js'
 const configInputSchema = z.object({
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
-  skillsDir: z.string().min(1),
+  skillsDirs: z.array(z.string().min(1)),
   allowedDirectories: z.array(z.string()),
   logLevel: z.enum(['debug', 'info', 'warn', 'error']),
 })

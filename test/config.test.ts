@@ -14,7 +14,7 @@ describe('config', () => {
     const config = await loadConfig({ configPath: path.join(dir, 'missing.yaml') }, {})
     expect(config.host).toBe('127.0.0.1')
     expect(config.port).toBe(18989)
-    expect(config.skillsDir).toBe(path.join(os.homedir(), '.agents', 'skills'))
+    expect(config.skillsDirs).toEqual([path.join(os.homedir(), '.agents', 'skills')])
     expect(config.allowedDirectories).toEqual([])
   })
 
@@ -23,17 +23,30 @@ describe('config', () => {
     const configPath = path.join(dir, 'config.yaml')
     await fs.writeFile(
       configPath,
-      ['host: 0.0.0.0', 'port: 1000', 'skillsDir: ./yaml-skills', 'allowedDirectories:', '  - ./yaml-allowed', 'logLevel: warn'].join('\n'),
+      [
+        'host: 0.0.0.0',
+        'port: 1000',
+        'skillsDirs:',
+        '  - ./yaml-skills-a',
+        '  - ./yaml-skills-b',
+        'allowedDirectories:',
+        '  - ./yaml-allowed',
+        'logLevel: warn',
+      ].join('\n'),
     )
     const config = await loadConfig(
-      parseCliArgs(['--config', configPath, '--port', '3000', '--allow-dir', './cli-allowed']),
-      { HOST: '127.0.0.2', PORT: '2000', SKILLS_DIR: './env-skills', LOG_LEVEL: 'debug' },
+      parseCliArgs(['--config', configPath, '--port', '3000', '--skills-dir', './cli-skills-a', '--skills-dir', './cli-skills-b', '--allow-dir', './cli-allowed']),
+      {
+        HOST: '127.0.0.2',
+        PORT: '2000',
+        SKILLS_DIRS: ['./env-skills-a', './env-skills-b'].join(path.delimiter),
+        LOG_LEVEL: 'debug',
+      },
     )
     expect(config.host).toBe('127.0.0.2')
     expect(config.port).toBe(3000)
-    expect(config.skillsDir).toBe(path.resolve('./env-skills'))
+    expect(config.skillsDirs).toEqual([path.resolve('./cli-skills-a'), path.resolve('./cli-skills-b')])
     expect(config.allowedDirectories).toEqual([path.resolve('./cli-allowed')])
     expect(config.logLevel).toBe('debug')
   })
 })
-

@@ -21,7 +21,7 @@ describe('skills', () => {
     const root = await tempDir()
     await writeSkill(root, 'good-skill')
 
-    const catalog = await loadSkillCatalog(root, createLogger('error'))
+    const catalog = await loadSkillCatalog([root], createLogger('error'))
     expect(catalog.skills).toHaveLength(1)
     expect(catalog.skills[0]).toMatchObject({
       name: 'good-skill',
@@ -47,13 +47,13 @@ describe('skills', () => {
     await fs.mkdir(path.join(skillDir, 'references'), { recursive: true })
     await fs.writeFile(path.join(skillDir, 'references', 'guide.md'), '# Guide')
 
-    await expect(readSkillResource(root, 'reader', 'SKILL.md', createLogger('error'))).resolves.toMatchObject({
+    await expect(readSkillResource([root], 'reader', 'SKILL.md', createLogger('error'))).resolves.toMatchObject({
       uri: 'skill://reader/SKILL.md',
       mimeType: 'text/markdown',
       content: expect.stringContaining('name: reader'),
       encoding: 'text',
     })
-    await expect(readSkillResource(root, 'reader', 'references/guide.md', createLogger('error'))).resolves.toMatchObject({
+    await expect(readSkillResource([root], 'reader', 'references/guide.md', createLogger('error'))).resolves.toMatchObject({
       uri: 'skill://reader/references/guide.md',
       mimeType: 'text/markdown',
       content: '# Guide',
@@ -61,7 +61,7 @@ describe('skills', () => {
     })
   })
 
-  it('skips invalid skills and duplicate names with diagnostics', async () => {
+  it('skips invalid skills and overrides duplicate names with diagnostics', async () => {
     const root = await tempDir()
     await fs.mkdir(path.join(root, 'bad-name'), { recursive: true })
     await fs.writeFile(path.join(root, 'bad-name', 'SKILL.md'), '---\nname: BadName\ndescription: Bad\n---\nBad')
@@ -70,15 +70,42 @@ describe('skills', () => {
     await writeSkill(path.join(root, 'a'), 'same')
     await writeSkill(path.join(root, 'b'), 'same')
 
-    const catalog = await loadSkillCatalog(root, createLogger('error'))
-    expect(catalog.skills).toEqual([])
+    const catalog = await loadSkillCatalog([root], createLogger('error'))
+    expect(catalog.skills).toHaveLength(1)
+    expect(catalog.skills[0].name).toBe('same')
+    expect(catalog.skills[0].directoryPath).toBe(path.join(root, 'b', 'same'))
     expect(catalog.diagnostics.map((diagnostic) => diagnostic.message)).toEqual(
       expect.arrayContaining([
         expect.stringContaining('Invalid skill name'),
         expect.stringContaining('Missing string frontmatter field: description'),
-        expect.stringContaining('Skipping duplicate skill name: same'),
+        expect.stringContaining('Overriding duplicate skill name: same'),
       ]),
     )
+  })
+
+  it('loads multiple roots and reads resources from the overriding skill', async () => {
+    const firstRoot = await tempDir()
+    const secondRoot = await tempDir()
+    await writeSkill(firstRoot, 'shared', 'first')
+    const overridingSkillDir = await writeSkill(secondRoot, 'shared', 'second')
+    await writeSkill(firstRoot, 'first-only')
+    await writeSkill(secondRoot, 'second-only')
+    await fs.mkdir(path.join(overridingSkillDir, 'references'), { recursive: true })
+    await fs.writeFile(path.join(overridingSkillDir, 'references', 'guide.md'), 'overridden guide')
+
+    const catalog = await loadSkillCatalog([firstRoot, secondRoot], createLogger('error'))
+    expect(catalog.skills.map((skill) => skill.name)).toEqual(['first-only', 'second-only', 'shared'])
+    expect(catalog.skills.find((skill) => skill.name === 'shared')?.directoryPath).toBe(overridingSkillDir)
+    expect(catalog.diagnostics.map((diagnostic) => diagnostic.message)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Overriding duplicate skill name: shared')]),
+    )
+
+    await expect(readSkillResource([firstRoot, secondRoot], 'shared', 'SKILL.md', createLogger('error'))).resolves.toMatchObject({
+      content: expect.stringContaining('second'),
+    })
+    await expect(readSkillResource([firstRoot, secondRoot], 'shared', 'references/guide.md', createLogger('error'))).resolves.toMatchObject({
+      content: 'overridden guide',
+    })
   })
 
   it('rejects path escapes, absolute paths, directories, and symlink escapes', async () => {
@@ -89,9 +116,9 @@ describe('skills', () => {
     await fs.mkdir(path.join(skillDir, 'references'), { recursive: true })
     await fs.symlink(outside, path.join(skillDir, 'references', 'outside.md'))
 
-    await expect(readSkillResource(root, 'secure', '../outside.md', createLogger('error'))).rejects.toThrow('escapes')
-    await expect(readSkillResource(root, 'secure', outside, createLogger('error'))).rejects.toThrow('relative')
-    await expect(readSkillResource(root, 'secure', 'references', createLogger('error'))).rejects.toThrow('not a file')
-    await expect(readSkillResource(root, 'secure', 'references/outside.md', createLogger('error'))).rejects.toThrow('escapes')
+    await expect(readSkillResource([root], 'secure', '../outside.md', createLogger('error'))).rejects.toThrow('escapes')
+    await expect(readSkillResource([root], 'secure', outside, createLogger('error'))).rejects.toThrow('relative')
+    await expect(readSkillResource([root], 'secure', 'references', createLogger('error'))).rejects.toThrow('not a file')
+    await expect(readSkillResource([root], 'secure', 'references/outside.md', createLogger('error'))).rejects.toThrow('escapes')
   })
 })
